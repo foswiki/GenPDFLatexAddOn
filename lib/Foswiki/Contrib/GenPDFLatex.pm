@@ -1,13 +1,13 @@
 #
-# GenPDFLatex.pm (converts a TWiki topic to Latex or PDF using HTML::Latex)
+# GenPDFLatex.pm (converts a Foswiki topic to Latex or PDF using HTML::Latex)
 #    (based on GenPDF.pm package)
 #
 # This package Copyright (c) 2005 W Scott Hoge 
 # (shoge -at- bwh -dot- harvard -dot- edu)
 # and distributed under the GPL (see below)
 #
-# part of the TWiki WikiClone (see http://twiki.org)
-# Copyright (C) 1999 Peter Thoeny, peter@thoeny.com
+# an extension to the Foswiki wiki (see http://foswiki.org)
+# Copyright (C) 2008-2009 Foswiki Contributors
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -36,7 +36,7 @@
 #  1;
 
 
-package TWiki::Contrib::GenPDFLatex;
+package Foswiki::Contrib::GenPDFLatex;
 
 use strict;
 
@@ -44,22 +44,20 @@ use vars qw( $VERSION $RELEASE $debug );
 
 use File::Copy;
 
-# use TWiki::Plugins::LatexModePlugin qw($preamble);
-
 # number the release version of this addon
 $VERSION = '$Rev$';
-$RELEASE = '2.200';
+$RELEASE = '3.000';
 
 =pod
 
-=head1 TWiki::Contrib::GenPDFLatex
+=head1 Foswiki::Contrib::GenPDFLatex
 
-TWiki::Contrib::GenPDFLatex - Generates raw latex or pdflatex file from a 
-    TWiki topic
+Foswiki::Contrib::GenPDFLatex - Generates raw latex or pdflatex file from a 
+    Foswiki topic
 
 =head1 DESCRIPTION
 
-See the GenPDFLatexAddOn TWiki topic for the full description.
+See the GenPDFLatexAddOn Foswiki topic for the full description.
 
 =head1 METHODS
 
@@ -73,17 +71,17 @@ and not called from outside the package.
 #### LocalSite.cfg)
 
 # path to location of local texmf tree, where custom style files are storedx
-$ENV{'HOME'} = $TWiki::cfg{Plugins}{GenPDFLatex}{home} ||
+$ENV{'HOME'} = $Foswiki::cfg{Plugins}{GenPDFLatex}{home} ||
     '/home/nobody';
 # full path to pdflatex and bibtex
-my $pdflatex = $TWiki::cfg{Plugins}{GenPDFLatex}{pdflatex} ||
+my $pdflatex = $Foswiki::cfg{Plugins}{GenPDFLatex}{pdflatex} ||
     '/usr/share/texmf/bin/pdflatex';
-my $bibtex = $TWiki::cfg{Plugins}{BibtexPlugin}{bibtex} || 
+my $bibtex = $Foswiki::cfg{Plugins}{BibtexPlugin}{bibtex} || 
     '/usr/share/texmf/bin/bibtex';
 
 # directory where the html2latex parser will store copies of
 # referenced images, if needed
-my $htmlstore = $TWiki::cfg{Plugins}{GenPDFLatex}{h2l_store} ||
+my $htmlstore = $Foswiki::cfg{Plugins}{GenPDFLatex}{h2l_store} ||
     '/tmp/';
 
 ######################################################################
@@ -91,8 +89,8 @@ my $htmlstore = $TWiki::cfg{Plugins}{GenPDFLatex}{h2l_store} ||
 
 use CGI::Carp qw( fatalsToBrowser );
 use CGI;
-use TWiki::Func;
-use TWiki::UI::View;
+use Foswiki::Func;
+use Foswiki::UI::View;
 
 use HTML::LatexLMP;
 use File::Basename;
@@ -100,48 +98,45 @@ use File::Temp;
 
 use Archive::Zip qw( :ERROR_CODES :CONSTANTS );
 
-sub genfile() {
+sub writeDebug {
+  &Foswiki::Func::writeDebug("genpdflatex - " . $_[0]) if $debug;
+}
 
-    my ($query, $webName, $topic, $scriptUrlPath, $userName );
-    if( $TWiki::Plugins::VERSION >= 1.1 ) { 
-        # Dakar interface 
-        my $session = shift;
+$debug = 0;
 
-        $query = $session->{cgiQuery};
-        $webName = $session->{webName};
-        $topic = $session->{topicName};
+sub GenPDFLatex() {
 
-        $TWiki::Plugins::SESSION = $session;
+    $Foswiki::Plugins::SESSION = shift; 
+        
+    my $query = $Foswiki::Plugins::SESSION->{cgiQuery};
 
-    } else {
-        # Cairo interface
-        $query = new CGI;
-    }
+    # initialize the topic location
+    ##
+    my $topic = $Foswiki::Plugins::SESSION->{topicName};
+    my $webName = $Foswiki::Plugins::SESSION->{webName};
+    my $scriptUrlPath = $Foswiki::Plugins::SESSION->{scriptUrlPath};
+    my $userName;
+
     my $thePathInfo = $query->path_info(); 
     my $theRemoteUser = $query->remote_user();
     my $theTopic = $query->param( 'topic' );
     my $theUrl = $query->url;
     
-    ( $topic, $webName, $scriptUrlPath, $userName ) = 
-        TWiki::initialize( $thePathInfo, $theRemoteUser,
-                           $theTopic, $theUrl, $query );
-
     my $action = $query->param('output') || "";
-
-    $debug = 0;
 
     if ( $action eq 'latex' ) {
 
         my $tex = _genlatex( $webName, $topic, $userName, $query );
 
+        my $resp = $Foswiki::Plugins::SESSION->{response};
         if (length($tex) > 0) {
-            print $query->header( -TYPE => "text/html",
-                                  -attachment=>"$topic.tex" );
-            print $tex;
+            $resp->header( -TYPE => "text/html",
+                           -attachment=>"$topic.tex" );
+            $resp->print( $tex );
         } else {
-            print $query->header( -TYPE => "text/html" );
+            $resp->header( -TYPE => "text/html" );
 
-            print "GenPDFLatex error:  No latex file generated.";
+            $resp->print( "GenPDFLatex error:  No latex file generated." );
         }
 
     } elsif ( $action eq 'srczip' ) {
@@ -151,13 +146,15 @@ sub genfile() {
         my @filelist = _get_file_list($webName,$topic);
 
         if ($debug) {
-            print $query->header( -TYPE => "text/html" );
+
+            my $resp = $Foswiki::Plugins::SESSION->{response};
+            $resp->header( -TYPE => "text/html" );
         
-            print "<p>Generating ZIP file of latex source + attached bib and fig files\n<p>";
-    
-            print "<ul>";
-            print map {"<li> $_"} @filelist;
-            print "</ul>";
+            $resp->print( 
+                "<p>Generating ZIP file of latex source + attached bib and fig files\n<p>".
+                "<ul>".
+                map {"<li> $_"} @filelist
+                . "</ul>" );
         }
 
         my $zip = Archive::Zip->new();
@@ -171,7 +168,7 @@ sub genfile() {
     #        $member->desiredCompressionMethod( COMPRESSION_DEFLATED );
         
             # use hard-disk path rather than relative url paths for images
-            my $url = TWiki::Func::getPubDir();
+            my $url = Foswiki::Func::getPubDir();
         
             foreach my $c (@filelist) {
                 my $member = $zip->addFile( join('/',$url,$webName,$topic,$c), $c );
@@ -181,11 +178,14 @@ sub genfile() {
         }
 
         if (-f $tmpzip) {
-            print $query->header( -TYPE => "application/zip",
-                                  -attachment=> $topic."_src.zip" );
+            my $resp = $Foswiki::Plugins::SESSION->{response};
+
+            $resp->header(  -TYPE => "application/zip",
+                            -attachment=> $topic."_src.zip" );
+
             open(F,$tmpzip);
             while (<F>) {
-                print;
+                $resp->print( $_ );
             }
             close(F);
 
@@ -195,9 +195,9 @@ sub genfile() {
             $WDIR = undef;
 
         } else {
-            print $query->header( -TYPE => "text/html" );
-        
-            print "GenPDFLatex error:  No ZIP file generated.";
+            my $resp = $Foswiki::Plugins::SESSION->{response};
+            $resp->header( -TYPE => "text/html" );
+            $resp->print( "GenPDFLatex error:  No ZIP file generated." );
         }
         undef($zip);
 
@@ -225,28 +225,44 @@ sub genfile() {
         my $SDIR = getcwd();
         $SDIR = $1 if ( ($SDIR) and ($SDIR =~ m/^(.*)$/) );
 
+        open(F,">/tmp/gpl.txt");
+
         my @filelist = _get_file_list($webName,$topic);
+        print F join(" ",@filelist);
+        print F "\n";
         foreach my $f (@filelist) {
-            copy( join('/',TWiki::Func::getPubDir(),$webName,$topic,$f), $path.'/'.$f );
+            my $ret = copy( join('/',Foswiki::Func::getPubDir(),$webName,$topic,$f), $path.'/'.$f );
+            if ($ret==0) {
+                print F "Copy of $f failed. $!\n";
+            } else {
+                print F "Copied $f\n";
+            }
         }
 
         chdir($path);
         my $flag = 0;
         my $ret = "";
+
         do {
-	    my $sandbox = $TWiki::sharedSandbox || $TWiki::sandbox;
-	    my ($result, $code) = $sandbox->sysCommand( "$pdflatex -interaction=nonstopmode $texrel" );
+	    my ($result, $code) = Foswiki::Sandbox->sysCommand( "$pdflatex -interaction=nonstopmode $texrel" );
             $ret = $result;
+
+            print F $ret;
+
 	    if( $tex =~ m/\\bibliography\{/ ) {
-	      ($result, $code) = $sandbox->sysCommand( "$bibtex $base" );
+
+	      ($result, $code) = Foswiki::Sandbox->sysCommand( "$bibtex $base" );
 	      $ret .= $result;
 	    }
-            $flag++ unless ($ret =~ m/Warning.*?Rerun/i);
+            $flag++; # unless ($ret =~ m/Warning.*?Rerun/i);
+            
+            print F "Flag: ".$flag."\n";
         } while ($flag < 2);
-
+        close(F);
+        
         my @errors = grep /^!/, $ret;
 
-        my $log = 
+        my $log = "";
         open(F,"$logfile");
         while (<F>) {
             $log .= $_."\n";
@@ -254,38 +270,40 @@ sub genfile() {
         }
         close(F);
 
+        my $resp = $Foswiki::Plugins::SESSION->{response};
         if(@errors){
-            print $query->header( -TYPE => "text/html" );
-            print "<html><body>";
-            print "pdflatex reported " . scalar(@errors) . " errors while creating PDF:";
-            print "<ul>\n";
-            print map {"<li>$_ "} @errors;
-            print "</ul>\n";
+            $resp->header( -TYPE => "text/html" );
+            $resp->print( "<html><body>" );
+            $resp->print( "pdflatex reported " . scalar(@errors) . " errors while creating PDF:" );
+            $resp->print( "<ul>\n" );
+            $resp->print( map {"<li>$_ "} @errors );
+            $resp->print( "</ul>\n" );
 
-            print "</html></body>";
+            $resp->print( "</html></body>" );
 
         } elsif (-f $pdffile) {
 
-            print $query->header( -TYPE => "application/pdf",
+            $resp->header( -TYPE => "application/pdf",
                                   -attachment=>"$topic.pdf" );
 
             open(F,"$pdffile");
             while (<F>) {
-                print;
+                $resp->print($_);
             }
             close(F);
         } else {
-            print $query->header( -TYPE => "text/html" );
-            print "<html><body>\n";
-            print "<h1>PDFLATEX processing error:</h1>\n";
+
+            $resp->header( -TYPE => "text/html" );
+            $resp->print( "<html><body>\n" );
+            $resp->print( "<h1>PDFLATEX processing error:</h1>\n" );
             
             if ($debug) {
-                print "Attached files: <ul>";
-                print map {"<li> $_"} @filelist;
-                print "</ul>";
+                $resp->print( "Attached files: <ul>" );
+                $resp->print( map {"<li> $_"} @filelist );
+                $resp->print( "</ul>" );
             }
-            print "<pre>".$log;
-            print "</pre></body></html>\n";
+            $resp->print( "<pre>".$log );
+            $resp->print( "</pre></body></html>\n" );
         }
 
         do {
@@ -309,7 +327,7 @@ sub genfile() {
 
     } else {
 
-        my $optpg = &TWiki::Func::getPreferencesValue( "GENPDFLATEX_OPTIONSPAGE" ) || "";
+        my $optpg = &Foswiki::Func::getPreferencesValue( "GENPDFLATEX_OPTIONSPAGE" ) || "";
 
         $optpg =~ s/\s+$//;  # this should not be needed, but apparently is :(
         my $text = "";
@@ -324,37 +342,31 @@ sub genfile() {
             }
             $optWeb = $webName if ($optWeb eq "");
 
-            my $exists;
-            my $session;
-            if( $TWiki::Plugins::VERSION >= 1.1 ) {
-                $session = $TWiki::Plugins::SESSION;
-                $exists = $session->{store}->topicExists( $optWeb, $optTopic );
-            } else {
-                $exists = TWiki::UI::webExists( $optWeb, $optTopic );
-            }
+            my $session = $Foswiki::Plugins::SESSION;
+            my $exists = $session->{store}->topicExists( $optWeb, $optTopic );
 
             if ($exists) {
                 my $skin = "plain"; # $query->param( "skin" );
                 my $tmpl;
-                if( $TWiki::Plugins::VERSION >= 1.2 ) { 
+                if( $Foswiki::Plugins::VERSION >= 1.2 ) { 
                     $tmpl = $session->templates->readTemplate( 'view', $skin );
-                } elsif( $TWiki::Plugins::VERSION >= 1.1 ) {
+                } elsif( $Foswiki::Plugins::VERSION >= 1.1 ) {
                     $tmpl = $session->{templates}->readTemplate( 'view', $skin );
                 } else {
-                    $tmpl = &TWiki::Store::readTemplate( "view", $skin );
+                    $tmpl = &Foswiki::Store::readTemplate( "view", $skin );
                 }
 
-                $text = TWiki::Func::readTopicText($optWeb, $optTopic, undef );
+                $text = Foswiki::Func::readTopicText($optWeb, $optTopic, undef );
 
                 $tmpl =~ s/%TEXT%/$text/;
                 $tmpl =~ s/%META:\w+{.*?}%//gs;
 
                 $tmpl .= "<p>(edit the $optpg topic to modify this form.)";
 
-                $text = TWiki::Func::expandCommonVariables($tmpl, $optTopic, $optWeb);
-                $text = TWiki::Func::renderText($text);
+                $text = Foswiki::Func::expandCommonVariables($tmpl, $optTopic, $optWeb);
+                $text = Foswiki::Func::renderText($text);
 
-                $text =~ s/%.*?%//g;    # clean up any spurious TWiki tags
+                $text =~ s/%.*?%//g;    # clean up any spurious Foswiki tags
             }
         } 
 
@@ -372,8 +384,8 @@ sub genfile() {
         # 
         #     my $stdout = tie *STDOUT, 'Redirect';
         #     
-        #     # TWiki::Func::redirectCgiQuery( $query, $optpg );
-        #     TWiki::UI::View::view( $optWeb, $optTopic, $userName, $query );
+        #     # Foswiki::Func::redirectCgiQuery( $query, $optpg );
+        #     Foswiki::UI::View::view( $optWeb, $optTopic, $userName, $query );
         # 
         #     my $text = join('',@{ $stdout });
         # 
@@ -393,7 +405,7 @@ sub genfile() {
         $text =~ s/\$topic/$topic/g;
         $text =~ s/\$web/$webName/g;
 
-        $text =~ s!<title>.*?</title>!<title>TWiki genpdflatex: $webName/$topic</title>!;
+        $text =~ s!<title>.*?</title>!<title>Foswiki genpdflatex: $webName/$topic</title>!;
 
         foreach my $c ($query->param()) {
             my $o = $query->param($c);
@@ -406,8 +418,8 @@ sub genfile() {
         $text =~ s/\n.*?\$style.*?\n/\n/g;
         $text =~ s/\$packages//g;
 
-        print $query->header;
-        print $text;
+        &Foswiki::Func::writeHeader();
+        $Foswiki::Plugins::SESSION->{response}->print( $text );
         
     }
     
@@ -415,7 +427,7 @@ sub genfile() {
 
 
 sub _get_file_list {
-    my ($meta,$text) = TWiki::Func::readTopic( $_[0], $_[1] ); # $webName, $topic
+    my ($meta,$text) = Foswiki::Func::readTopic( $_[0], $_[1] ); # $webName, $topic
     my @filelist;
     
     my %h = %{$meta};
@@ -466,7 +478,7 @@ sub _list_possible_classes {
 sub _genlatex {
     my( $webName, $topic, $userName, $query) = @_;
 
-    # twiki rendering set-up
+    # wiki rendering set-up
     my $rev = $query->param( "rev" );
     my $viewRaw = $query->param( "raw" ) || "";
     my $unlock  = $query->param( "unlock" ) || "";
@@ -475,57 +487,57 @@ sub _genlatex {
 
 
     my $tmpl;
-    if( $TWiki::Plugins::VERSION >= 1.1 ) { 
+    if( $Foswiki::Plugins::VERSION >= 1.1 ) { 
         # Dakar interface or better
-        my $session = $TWiki::Plugins::SESSION;
+        my $session = $Foswiki::Plugins::SESSION;
         my $store = $session->{store};
 
         return unless ( $store->topicExists( $webName, $topic ) );
 
-        if( $TWiki::Plugins::VERSION >= 1.2 ) { 
+        if( $Foswiki::Plugins::VERSION >= 1.2 ) { 
             $tmpl = $session->templates->readTemplate( 'view', $skin );
         } else {
             $tmpl = $session->{templates}->readTemplate( 'view', $skin );
         }
     } else {
-        return unless TWiki::UI::webExists( $webName, $topic );
+        return unless Foswiki::UI::webExists( $webName, $topic );
 
-        $tmpl = &TWiki::Store::readTemplate( "view", $skin );
+        $tmpl = &Foswiki::Store::readTemplate( "view", $skin );
     }
 
-    TWiki::Func::getContext()->{ 'genpdflatex' } = 1;
+    Foswiki::Func::getContext()->{ 'genpdflatex' } = 1;
     
-    ### from TWiki::Contrib::GenPDF::_getRenderedView
+    ### from Foswiki::Contrib::GenPDF::_getRenderedView
 
-    my $text = TWiki::Func::readTopicText($webName, $topic, $rev );
-    $text = TWiki::Func::expandCommonVariables($text, $topic, $webName);
+    my $text = Foswiki::Func::readTopicText($webName, $topic, $rev );
+    $text = Foswiki::Func::expandCommonVariables($text, $topic, $webName);
         
     # $text =~ s/\\/\n/g;
 
     ### for compatibility w/ SectionalEditPlugin (can't override skin
-    ### directives in TWiki::Func::getSkin)
+    ### directives in Foswiki::Func::getSkin)
     $text =~ s!<.*?section.*?>!!g;
 
     # protect latex new-lines at end of physical lines
     $text =~ s!(\\\\)$!$1    !g;  
     $text =~ s!(\\\\)\n!$1    \n!g;  
 
-    $text = TWiki::Func::renderText($text);
+    $text = Foswiki::Func::renderText($text);
     
     $text =~ s/%META:\w+{.*?}%//gs; # clean out the meta-data
 
-    my $preamble = TWiki::Func::getContext->{'LMPcontext'}->{'preamble'} || "";
+    my $preamble = Foswiki::Func::getContext->{'LMPcontext'}->{'preamble'} || "";
     print STDERR $preamble."\n" if ($debug);
 
-    # remove the twiki-special <nop> tag (It gets ignored in the HTML
+    # remove the wiki <nop> tag (It gets ignored in the HTML
     # parser anyway, this just cuts down on the number of error
     # messages.)
     $text =~ s!<nop>!!g;
 
     # use hard-disk path rather than relative url paths for images
-    my $pdir = TWiki::Func::getPubDir();
-    my $purlh = TWiki::Func::getUrlHost();
-    my $purlp = TWiki::Func::getPubUrlPath();
+    my $pdir = Foswiki::Func::getPubDir();
+    my $purlh = Foswiki::Func::getUrlHost();
+    my $purlp = Foswiki::Func::getPubUrlPath();
 
     $text =~ s!<img(.*?) src="($purlh)?$purlp!<img$1 src="$pdir\/!sgi;
 

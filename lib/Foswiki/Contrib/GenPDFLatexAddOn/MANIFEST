@@ -1,0 +1,6 @@
+lib/Foswiki/Contrib/GenPDFLatex.pm
+lib/Foswiki/Plugins/GenPDFLatexPlugin.pm
+bin/genpdflatex
+data/Main/GenPDFLatexForm.txt
+data/System/GenPDFLatexPlugin.txt
+data/System/GenPDFLatexAddOn.txt

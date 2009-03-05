@@ -1,6 +1,0 @@
-lib/TWiki/Contrib/GenPDFLatex.pm
-lib/TWiki/Plugins/GenPDFLatexPlugin.pm
-bin/genpdflatex
-data/Main/GenPDFLatexForm.txt
-data/TWiki/GenPDFLatexPlugin.txt
-data/TWiki/GenPDFLatexAddOn.txt

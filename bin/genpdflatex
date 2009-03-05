@@ -1,14 +1,12 @@
 #!/usr/bin/perl -wT
-#
+###############################################################################
 # Foswiki - The Free and Open Source Wiki, http://foswiki.org/
 #
-# Copyright (C) 1999-2004 Peter Thoeny, peter@thoeny.com
+# Copyright (C) 2003 Michael Daum <micha@nats.informatik.uni-hamburg.de>
 #
-# Based on parts of Ward Cunninghams original Wiki and JosWiki.
-# Copyright (C) 1998 Markus Peter - SPiN GmbH (warpi@spin.de)
-# Some changes by Dave Harris (drh@bhresearch.co.uk) incorporated
+# ported to Foswiki:
+# Copyright (C) 2008-2009 Foswiki Contributors.
 #
-# For licensing info read license.txt file in the TWiki root.
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
 # as published by the Free Software Foundation; either version 2
@@ -19,25 +17,32 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details, published at 
 # http://www.gnu.org/copyleft/gpl.html
+###############################################################################
 
+use strict;
+use warnings;
 
 BEGIN {
-    # Set default current working directory (needed for mod_perl)
-    if( $ENV{"SCRIPT_FILENAME"} && $ENV{"SCRIPT_FILENAME"} =~ /^(.+)\/[^\/]+$/ ) {
-        chdir $1;
+    if ( defined $ENV{GATEWAY_INTERFACE} ) {
+        $Foswiki::cfg{Engine} = 'Foswiki::Engine::CGI';
+        use CGI::Carp qw(fatalsToBrowser);
+        $SIG{__DIE__} = \&CGI::Carp::confess;
     }
-    # Set library paths in @INC, at compile time
-    unshift @INC, '.';
+    else {
+        $Foswiki::cfg{Engine} = 'Foswiki::Engine::CLI';
+        require Carp;
+        $SIG{__DIE__} = \&Carp::confess;
+    }
+    $ENV{FOSWIKI_ACTION} = 'genpdflatex';
+    @INC = ('.', grep { $_ ne '.' } @INC);
     require 'setlib.cfg';
 }
 
-use strict;
-use TWiki::Contrib::GenPDFLatex;
-
-if( $TWiki::Plugins::VERSION >= 1.1 ) { 
-    # Dakar interface 
-    TWiki::UI::run( \&TWiki::Contrib::GenPDFLatex::genfile );
-} else { 
-    # Cairo interface
-    TWiki::Contrib::GenPDFLatex::genfile();
-}
+use Foswiki;
+use Foswiki::UI;
+$Foswiki::engine->run();
+# Note: to run this script in Foswiki, it needs to be registered with 
+# the SwitchBoard. 
+#       add the following line to LocalSite.cfg:
+#
+# $Foswiki::cfg{SwitchBoard}{genpdflatex} = [ "Foswiki::Contrib::GenPDFLatex::GenPDFLatex", "genpdflatex", { genpdflatex => 1 } ];
