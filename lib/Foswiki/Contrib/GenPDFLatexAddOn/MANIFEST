@@ -1,4 +1,5 @@
 lib/Foswiki/Contrib/GenPDFLatex.pm
+lib/Foswiki/Contrib/GenPDFLatexAddOn.pm
 lib/Foswiki/Plugins/GenPDFLatexPlugin.pm
 bin/genpdflatex
 data/Main/GenPDFLatexForm.txt

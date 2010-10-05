@@ -128,8 +128,10 @@ The Foswiki:Extensions.BibtexPlugin can be used for bibliography support.
 
 %STARTINCLUDE%
 |  Add-on Author: | Foswiki:Main/ScottHoge |
-|  Add-on Version: | 16 Feb 2009 (v3.0, SVN:%$VERSION%) |
+|  Version: | %$VERSION% |
+|  Release: | %$RELEASE% |
 |  Change History: | <!-- versions below in reverse order -->&nbsp; |
+|   5 Oct 2010 | Foswikitasks:Item9774 - Add GenPDFLatexAddOn.pm to support RELEASE/VERSION strings |
 |  16 Feb 2009 (v3.0): | ported to Foswiki |
 |  15 Nov 2007 (v2.1): | improved reporting of errors, now includes bibtex support |
 |  30 Sep 2006 (v2.01): | minor change, for compatibility with Foswiki:Extensions.LatexModePlugin v3.0 |

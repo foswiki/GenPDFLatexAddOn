@@ -40,13 +40,11 @@ package Foswiki::Contrib::GenPDFLatex;
 
 use strict;
 
-use vars qw( $VERSION $RELEASE $debug );
+use vars qw( $debug );
 
 use File::Copy;
 
-# number the release version of this addon
-$VERSION = '$Rev$';
-$RELEASE = '3.000';
+# VERSION and RELEASE moved to GenPDFLatexAddOn.pm
 
 =pod
 
